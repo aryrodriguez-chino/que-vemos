@@ -215,18 +215,24 @@ async function getProviders(id, type){
   return { flatrate: filt(ar.flatrate), other: filt([...(ar.rent||[]), ...(ar.buy||[])]) };
 }
 
-// Mapea las 6 plataformas fijas a sus provider_id reales de TMDB para AR
-async function getPlatformIds(type){
-  if(state.providersCache && state.providersCache[type]) return state.providersCache[type];
+// Mapea las 6 plataformas fijas a sus provider_id + logo reales de TMDB para AR
+async function getPlatformMeta(type){
+  if(state.platformMetaCache && state.platformMetaCache[type]) return state.platformMetaCache[type];
   const data = await tmdb(`/watch/providers/${type}`, {watch_region:REGION});
   const list = data.results || [];
   const map = {};
   PLATFORMS.forEach(pl=>{
     const found = list.find(p => pl.match(p.provider_name.toLowerCase()));
-    if(found) map[pl.key] = found.provider_id;
+    if(found) map[pl.key] = { id: found.provider_id, logo: found.logo_path };
   });
-  state.providersCache = state.providersCache || {};
-  state.providersCache[type] = map;
+  state.platformMetaCache = state.platformMetaCache || {};
+  state.platformMetaCache[type] = map;
+  return map;
+}
+async function getPlatformIds(type){
+  const meta = await getPlatformMeta(type);
+  const map = {};
+  for(const k in meta) map[k] = meta[k].id;
   return map;
 }
 
@@ -286,7 +292,7 @@ function viewBuscar(main){
 }
 function platformGridView(){
   return `<div class="platform-grid">${PLATFORMS.map(p=>`
-    <div class="platform-tile" data-key="${p.key}" style="color:${p.color}">${p.short}</div>
+    <div class="platform-tile" data-key="${p.key}" id="tile-${p.key}" style="color:${p.color}">${p.short}</div>
   `).join("")}</div>`;
 }
 function bindPlatformGrid(){
@@ -298,6 +304,20 @@ function bindPlatformGrid(){
       setTimeout(runExplore, 50);
     };
   });
+  loadPlatformLogos();
+}
+async function loadPlatformLogos(){
+  try{
+    const meta = await getPlatformMeta("movie");
+    PLATFORMS.forEach(p=>{
+      const tile = document.getElementById(`tile-${p.key}`);
+      const logo = meta[p.key] && meta[p.key].logo;
+      if(tile && logo){
+        tile.innerHTML = `<img src="${IMG_LOGO}${logo}" alt="${p.label}" style="width:56px;height:56px;object-fit:contain;border-radius:12px;">`;
+        tile.style.color = "";
+      }
+    });
+  }catch(e){ /* si falla, se quedan las siglas de respaldo */ }
 }
 async function doSearch(q){
   const box = document.getElementById("searchResults");
